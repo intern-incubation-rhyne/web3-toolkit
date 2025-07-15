@@ -6,7 +6,7 @@ import (
 	"log"
 	"math/big"
 	"strings"
-	"toolkit/utils"
+	"toolkit/config"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -97,7 +97,7 @@ func Query(ca string) Slot0 {
 		log.Fatalf("Error preparing slot0 call: %v", err)
 	}
 
-	client, err := ethclient.Dial(utils.RpcUrl)
+	client, err := ethclient.Dial(config.HTTP_RPC)
 	if err != nil {
 		log.Fatalf("Error connecting RPC: %v", err)
 	}

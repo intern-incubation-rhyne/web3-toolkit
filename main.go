@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	fmt.Println("Welcome to my contract toolkit!")
+	fmt.Println("Welcome to my toolkit!")
 }
