@@ -126,7 +126,7 @@ func TestStatistic(t *testing.T) {
 	profitByContract := make(map[common.Address]*big.Int)
 	totalProfit := big.NewInt(0)
 	for _, log := range logs {
-		profit, err := liquidation.ParseEVKLiquidationProfit(ctx, client, log)
+		profit, err := liquidation.ParseEVKLiquidationRevenue(ctx, client, log)
 		t.Logf("txHash: %v, Profit: %v", log.TxHash, profit)
 		if err != nil {
 			t.Fatal(err)
@@ -140,8 +140,8 @@ func TestStatistic(t *testing.T) {
 	}
 
 	for contract, profit := range profitByContract {
-		t.Logf("Contract: %v, Profit: %v", contract, profit)
+		t.Logf("Vault: %v, Profit: %.4f USD", contract, new(big.Float).Quo(new(big.Float).SetInt(profit), big.NewFloat(1e18)))
 	}
 
-	t.Logf("Total Profit: %v", totalProfit)
+	t.Logf("Total Profit: %.4f USD", new(big.Float).Quo(new(big.Float).SetInt(totalProfit), big.NewFloat(1e18)))
 }
