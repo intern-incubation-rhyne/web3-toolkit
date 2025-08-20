@@ -20,17 +20,21 @@ type callLog struct {
 	Decoded  []string       `json:"decodedData,omitempty"`
 }
 
-type callTrace struct {
-	Type         string         `json:"type"`
-	From         common.Address `json:"from"`
-	To           common.Address `json:"to"`
-	Value        string         `json:"value,omitempty"`   // Hex value, e.g., "0x0"
-	Gas          string         `json:"gas,omitempty"`     // Hex value
-	GasUsed      string         `json:"gasUsed,omitempty"` // Hex value
-	Error        string         `json:"error,omitempty"`
-	RevertReason string         `json:"revertReason,omitempty"`
-	Calls        []callTrace    `json:"calls,omitempty"` // Recursive call frames
-	Logs         []callLog      `json:"logs,omitempty"`
+// callTrace is the result of a callTracer run.
+type CallTrace struct {
+	From         common.Address  `json:"from"`
+	Gas          *hexutil.Uint64 `json:"gas"`
+	GasUsed      *hexutil.Uint64 `json:"gasUsed"`
+	To           *common.Address `json:"to,omitempty"`
+	Input        hexutil.Bytes   `json:"input"`
+	Output       hexutil.Bytes   `json:"output,omitempty"`
+	Error        string          `json:"error,omitempty"`
+	RevertReason string          `json:"revertReason,omitempty"`
+	Calls        []CallTrace     `json:"calls,omitempty"`
+	Logs         []callLog       `json:"logs,omitempty"`
+	Value        *hexutil.Big    `json:"value,omitempty"`
+	// Gencodec adds overridden fields at the end
+	Type string `json:"type"`
 }
 
 func GetSender(tx *types.Transaction) *common.Address {
@@ -57,7 +61,7 @@ func decodeLogData(logEntry *callLog) {
 	logEntry.Decoded = decoded
 }
 
-func decodeData(frame *callTrace) {
+func decodeData(frame *CallTrace) {
 	for i := range frame.Logs {
 		decodeLogData(&frame.Logs[i])
 	}
@@ -66,7 +70,7 @@ func decodeData(frame *callTrace) {
 	}
 }
 
-func TraceCall(ctx context.Context, client *ethclient.Client, txHash string, txIndex int) callTrace {
+func TraceCall(ctx context.Context, client *ethclient.Client, txHash string, txIndex int) CallTrace {
 	tx, _, err := client.TransactionByHash(ctx, common.HexToHash(txHash))
 	if err != nil {
 		log.Fatalf("Failed to get transaction: %v", err)
@@ -93,7 +97,7 @@ func TraceCall(ctx context.Context, client *ethclient.Client, txHash string, txI
 		"txIndex": hexutil.EncodeUint64(uint64(txIndex)),
 	}
 
-	var traceResult callTrace
+	var traceResult CallTrace
 	if err := client.Client().CallContext(ctx, &traceResult, "debug_traceCall", callArgs, blockNumber, traceConfig); err != nil {
 		log.Fatalf("BackrunBribe: RPC call to debug_traceCall failed: %v", err)
 	}
