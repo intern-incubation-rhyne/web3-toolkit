@@ -3,6 +3,7 @@ package liquidation_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -95,7 +96,7 @@ func TestEthPrice(t *testing.T) {
 }
 
 func TestParseEVKLiquidationRevenue(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(22868332), big.NewInt(22868332))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(22910856), big.NewInt(22910856))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +122,7 @@ func TestGetL1Fee(t *testing.T) {
 }
 
 func TestParseEVKLiquidationProfit(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21557731), big.NewInt(21557731))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(22734802), big.NewInt(22734802))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,14 +158,14 @@ func TestEulerStatistic(t *testing.T) {
 	profitByContract := make(map[common.Address]*big.Int)
 	totalProfit := big.NewInt(0)
 	for txHash := range txHashes {
-		t.Log("--------------------------------")
-		t.Logf("txHash: %v", txHash)
+		fmt.Println("--------------------------------")
+		fmt.Printf("txHash: %v\n", txHash)
 		profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, txHash)
 		if err != nil {
 			t.Log(err)
 			continue
 		}
-		t.Logf("txHash: %v, Profit: %v", txHash, profit)
+		fmt.Printf("Profit: %v\n", profit)
 		totalProfit = new(big.Int).Add(totalProfit, profit)
 
 		tx, _, err := client.TransactionByHash(ctx, txHash)
@@ -183,10 +184,10 @@ func TestEulerStatistic(t *testing.T) {
 	}
 
 	for contract, profit := range profitByContract {
-		t.Logf("Vault: %v, Profit: %.4f ETH", contract, new(big.Float).Quo(new(big.Float).SetInt(profit), big.NewFloat(1e18)))
+		fmt.Printf("Contract: %v, Profit: %.4f ETH\n", contract, new(big.Float).Quo(new(big.Float).SetInt(profit), big.NewFloat(1e18)))
 	}
 
-	t.Logf("Total Profit: %.4f ETH", new(big.Float).Quo(new(big.Float).SetInt(totalProfit), big.NewFloat(1e18)))
+	fmt.Printf("Total Profit: %.4f ETH\n", new(big.Float).Quo(new(big.Float).SetInt(totalProfit), big.NewFloat(1e18)))
 }
 
 func TestEulerLens(t *testing.T) {

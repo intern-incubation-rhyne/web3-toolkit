@@ -47,7 +47,8 @@ func TestGetRateToEth(t *testing.T) {
 }
 
 func TestGetTokenTotalPriceToETH(t *testing.T) {
-	rate, err := query.TokenToEthValue(common.HexToAddress("0x35D8949372D46B7a3D5A56006AE77B215fc69bC0"), big.NewInt(34575909851), big.NewInt(21592841), client)
+	amount, _ := new(big.Int).SetString("3682645216638265720832", 10)
+	rate, err := query.TokenToEthValue(common.HexToAddress("0x90D2af7d622ca3141efA4d8f1F24d86E5974Cc8F"), amount, big.NewInt(22910856), client)
 	if err != nil {
 		log.Fatalf("Error getting rate: %v", err)
 	}
