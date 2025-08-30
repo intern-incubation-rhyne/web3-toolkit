@@ -70,12 +70,12 @@ func GetEulerRevenue(
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		panic(err)
+		return nil, nil, nil, fmt.Errorf("failed to marshal json: %v", err)
 	}
 
 	resp, err := http.Post(rpcUrl, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		panic(err)
+		return nil, nil, nil, fmt.Errorf("failed to post: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -83,7 +83,7 @@ func GetEulerRevenue(
 
 	var rpcResp query.RPCResponse
 	if err := json.Unmarshal(body, &rpcResp); err != nil {
-		panic(err)
+		return nil, nil, nil, fmt.Errorf("failed to unmarshal: %v", err)
 	}
 
 	if rpcResp.Error != nil {
@@ -93,15 +93,15 @@ func GetEulerRevenue(
 
 	var traceResult trace.CallTrace
 	if err := json.Unmarshal(rpcResp.Result, &traceResult); err != nil {
-		panic(err)
+		return nil, nil, nil, fmt.Errorf("failed to unmarshal: %v", err)
 	}
 
 	revenue := utils.ParseInt256(traceResult.Output[0:32])
 	debtValue := new(big.Int).SetBytes(traceResult.Output[32:64])
 	collateralValue := new(big.Int).SetBytes(traceResult.Output[64:96])
-	fmt.Println("Revenue:", revenue)
-	fmt.Println("Debt Value:", debtValue)
-	fmt.Println("Collateral Value:", collateralValue)
+	// fmt.Println("Revenue:", revenue)
+	// fmt.Println("Debt Value:", debtValue)
+	// fmt.Println("Collateral Value:", collateralValue)
 
 	return revenue, debtValue, collateralValue, nil
 }

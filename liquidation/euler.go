@@ -221,28 +221,41 @@ func GetL1Fee(ctx context.Context, client *ethclient.Client, logItem types.Log) 
 }
 
 // return profit in USD (18 decimals)
-func ParseEVKLiquidationProfit(ctx context.Context, rpcUrl string, client *ethclient.Client, logItem types.Log) (*big.Int, error) {
-	revenue, err := ParseEVKLiquidationRevenue(ctx, rpcUrl, logItem)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get revenue: %v", err)
-	}
-	receipt, err := client.TransactionReceipt(ctx, logItem.TxHash)
+func ParseEVKLiquidationProfit(ctx context.Context, rpcUrl string, client *ethclient.Client, txHash common.Hash) (*big.Int, error) {
+	receipt, err := client.TransactionReceipt(ctx, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction: %v", err)
 	}
+	var logs []types.Log
+	for _, log := range receipt.Logs {
+		if log.Topics[0] == common.HexToHash(evkLiquidationSignature) {
+			logs = append(logs, *log)
+		}
+	}
+
+	revenueSum := big.NewInt(0)
+	for i, log := range logs {
+		revenue, err := ParseEVKLiquidationRevenue(ctx, rpcUrl, log)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get revenue: %v", err)
+		}
+		revenueSum = new(big.Int).Add(revenueSum, revenue)
+		fmt.Printf("liquidation %d revenue: %v\n", i, revenue)
+	}
+
 	gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
 
-	directBribe, err := query.Bribe(ctx, client, logItem.TxHash)
+	directBribe, err := query.Bribe(ctx, client, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get bribe: %v", err)
 	}
 	gasCost = new(big.Int).Add(gasCost, directBribe)
-	profit := new(big.Int).Sub(revenue, new(big.Int).Add(gasCost, directBribe))
+	profit := new(big.Int).Sub(revenueSum, new(big.Int).Add(gasCost, directBribe))
 
-	fmt.Printf("  %s revenue: %v\n", logItem.TxHash.Hex(), revenue)
-	fmt.Printf("  %s gasCost: %v\n", logItem.TxHash.Hex(), gasCost)
-	fmt.Printf("  %s directBribe: %v\n", logItem.TxHash.Hex(), directBribe)
-	fmt.Printf("  %s profit: %v\n", logItem.TxHash.Hex(), profit)
+	// fmt.Printf("  %s revenue: %v\n", txHash.Hex(), revenueSum)
+	// fmt.Printf("  %s gasCost: %v\n", txHash.Hex(), gasCost)
+	// fmt.Printf("  %s directBribe: %v\n", txHash.Hex(), directBribe)
+	// fmt.Printf("  %s profit: %v\n", txHash.Hex(), profit)
 	return profit, nil
 }
 

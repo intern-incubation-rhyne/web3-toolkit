@@ -95,7 +95,7 @@ func TestEthPrice(t *testing.T) {
 }
 
 func TestParseEVKLiquidationRevenue(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21557731), big.NewInt(21557731))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(22868332), big.NewInt(22868332))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestParseEVKLiquidationProfit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, logs[0])
+	profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, logs[0].TxHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,21 +149,35 @@ func TestEulerStatistic(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	txHashes := make(map[common.Hash]bool)
+	for _, log := range logs {
+		txHashes[log.TxHash] = true
+	}
+
 	profitByContract := make(map[common.Address]*big.Int)
 	totalProfit := big.NewInt(0)
-	for _, log := range logs {
+	for txHash := range txHashes {
 		t.Log("--------------------------------")
-		t.Logf("txHash: %v", log.TxHash)
-		profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, log)
+		t.Logf("txHash: %v", txHash)
+		profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, txHash)
 		if err != nil {
 			t.Log(err)
+			continue
 		}
-		t.Logf("txHash: %v, Profit: %v", log.TxHash, profit)
+		t.Logf("txHash: %v, Profit: %v", txHash, profit)
 		totalProfit = new(big.Int).Add(totalProfit, profit)
-		if _, ok := profitByContract[log.Address]; !ok {
-			profitByContract[log.Address] = profit
+
+		tx, _, err := client.TransactionByHash(ctx, txHash)
+		if err != nil {
+			t.Log(err)
+			continue
+		}
+		toAddress := *tx.To()
+
+		if _, ok := profitByContract[toAddress]; !ok {
+			profitByContract[toAddress] = profit
 		} else {
-			profitByContract[log.Address] = new(big.Int).Add(profitByContract[log.Address], profit)
+			profitByContract[toAddress] = new(big.Int).Add(profitByContract[toAddress], profit)
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
