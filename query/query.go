@@ -84,12 +84,21 @@ func PaginatedQuery(ctx context.Context, client *ethclient.Client, config QueryC
 				fromBlock, toBlock := work[0], work[1]
 
 				start := time.Now()
-				logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{
-					FromBlock: fromBlock,
-					ToBlock:   toBlock,
-					Addresses: config.Addresses,
-					Topics:    config.Topics,
-				})
+				var logs []types.Log
+				var err error
+				for {
+					logs, err = client.FilterLogs(ctx, ethereum.FilterQuery{
+						FromBlock: fromBlock,
+						ToBlock:   toBlock,
+						Addresses: config.Addresses,
+						Topics:    config.Topics,
+					})
+					if err != nil {
+						time.Sleep(1 * time.Second)
+						continue
+					}
+					break
+				}
 				duration := time.Since(start)
 
 				resultChan <- QueryResult{

@@ -2,13 +2,16 @@ package liquidation_test
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"math/big"
 	"os"
 	"testing"
+	"time"
 	"toolkit/liquidation"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
 )
@@ -26,19 +29,33 @@ func init() {
 
 	ctx = context.Background()
 
-	client, err = ethclient.Dial(os.Getenv("UNICHAIN_RPC_URL"))
+	client, err = ethclient.Dial(os.Getenv("MAINNET_RPC_URL"))
 	if err != nil {
 		log.Fatalf("Error connecting RPC: %v", err)
 	}
 }
 
 func TestEVKLiquidations(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(24957375), big.NewInt(24957375))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21525614), big.NewInt(23190614))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Logf("Found %d logs", len(logs))
+
+	// Save logs to JSON file
+	filename := "data/mainnet_euler_logs.json"
+	data, err := json.MarshalIndent(logs, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.WriteFile(filename, data, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Logs saved to %s", filename)
 }
 
 func TestGetQuote(t *testing.T) {
@@ -78,12 +95,12 @@ func TestEthPrice(t *testing.T) {
 }
 
 func TestParseEVKLiquidationRevenue(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(19850630), big.NewInt(19850630))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21557731), big.NewInt(21557731))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, client, logs[0])
+	revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, os.Getenv("MAINNET_RPC_URL"), logs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,44 +121,73 @@ func TestGetL1Fee(t *testing.T) {
 }
 
 func TestParseEVKLiquidationProfit(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(19850630), big.NewInt(19850630))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21557731), big.NewInt(21557731))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	profit, err := liquidation.ParseEVKLiquidationProfit(ctx, client, logs[0])
+	profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, logs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("Profit: %v", profit)
 }
 
-func TestStatistic(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(15408102), big.NewInt(24957375))
+func TestEulerStatistic(t *testing.T) {
+	// logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(15408102), big.NewInt(24957375))
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// t.Logf("analyzing %d txns", len(logs))
+	data, err := os.ReadFile("data/mainnet_euler_logs.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("analyzing %d txns", len(logs))
+	var logs []types.Log
+	err = json.Unmarshal(data, &logs)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	profitByContract := make(map[common.Address]*big.Int)
 	totalProfit := big.NewInt(0)
 	for _, log := range logs {
-		profit, err := liquidation.ParseEVKLiquidationRevenue(ctx, client, log)
-		t.Logf("txHash: %v, Profit: %v", log.TxHash, profit)
+		t.Log("--------------------------------")
+		t.Logf("txHash: %v", log.TxHash)
+		profit, err := liquidation.ParseEVKLiquidationProfit(ctx, os.Getenv("MAINNET_RPC_URL"), client, log)
 		if err != nil {
-			t.Fatal(err)
+			t.Log(err)
 		}
+		t.Logf("txHash: %v, Profit: %v", log.TxHash, profit)
 		totalProfit = new(big.Int).Add(totalProfit, profit)
 		if _, ok := profitByContract[log.Address]; !ok {
 			profitByContract[log.Address] = profit
 		} else {
 			profitByContract[log.Address] = new(big.Int).Add(profitByContract[log.Address], profit)
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	for contract, profit := range profitByContract {
-		t.Logf("Vault: %v, Profit: %.4f USD", contract, new(big.Float).Quo(new(big.Float).SetInt(profit), big.NewFloat(1e18)))
+		t.Logf("Vault: %v, Profit: %.4f ETH", contract, new(big.Float).Quo(new(big.Float).SetInt(profit), big.NewFloat(1e18)))
 	}
 
-	t.Logf("Total Profit: %.4f USD", new(big.Float).Quo(new(big.Float).SetInt(totalProfit), big.NewFloat(1e18)))
+	t.Logf("Total Profit: %.4f ETH", new(big.Float).Quo(new(big.Float).SetInt(totalProfit), big.NewFloat(1e18)))
+}
+
+func TestEulerLens(t *testing.T) {
+	rpcUrl := os.Getenv("MAINNET_RPC_URL")
+	debt := common.HexToAddress("0x797DD80692c3b2dAdabCe8e30C07fDE5307D48a9")
+	debtAmount, _ := new(big.Int).SetString("193366001063", 10)
+	collateral := common.HexToAddress("0xF6E2EfDF175e7a91c8847dade42f2d39A9aE57D4")
+	collateralAmount, _ := new(big.Int).SetString("46591864627301414905", 10)
+	blockNumber := big.NewInt(21573389)
+	txIndex := uint(1)
+	revenue, debtValue, collateralValue, err := liquidation.GetEulerRevenue(ctx, rpcUrl, debt, debtAmount, collateral, collateralAmount, blockNumber, txIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Revenue: %v", revenue)
+	t.Logf("Debt Value: %v", debtValue)
+	t.Logf("Collateral Value: %v", collateralValue)
 }
