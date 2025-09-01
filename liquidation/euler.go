@@ -15,24 +15,44 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+type EulerLogWithRevenue struct {
+	types.Log
+	USDRevenue *big.Float `json:"usdRevenue"`
+}
+
 const (
-	gasPriceOracle    = "0x420000000000000000000000000000000000000F"
-	eulerRouter       = "0xdEb6135daed5470241843838944631Af12cE464B"
-	wethAddress       = "0x4200000000000000000000000000000000000006"
-	usdAddress        = "0x0000000000000000000000000000000000000348"
+	evkLiquidationSignature = "0x8246cc71ab01533b5bebc672a636df812f10637ad720797319d5741d5ebb3962"
+
+	// // unichain
+	// gasPriceOracle = "0x420000000000000000000000000000000000000F"
+	// eulerRouter    = "0xdEb6135daed5470241843838944631Af12cE464B"
+	// wethAddress    = "0x4200000000000000000000000000000000000006"
+	// usdAddress     = "0x0000000000000000000000000000000000000348"
+
+	// mainnet
+	gasPriceOracle = "0x0000000000000000000000000000000000000000"
+	eulerRouter    = "0x83B3b76873D36A28440cF53371dF404c42497136"
+	wethAddress    = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+	usdAddress     = "0x0000000000000000000000000000000000000348"
+
 	evkAbi            = `[{"inputs":[],"name":"oracle","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]`
 	priceOracleAbi    = `[{"inputs":[{"internalType":"uint256","name":"inAmount","type":"uint256"},{"internalType":"address","name":"base","type":"address"},{"internalType":"address","name":"quote","type":"address"}],"name":"getQuote","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`
-	gasPriceOracleAbi = `[{"inputs":[{"internalType":"bytes","name":"_data","type":"bytes"}],"name":"getL1Fee","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`
+	gasPriceOracleAbi = `[
+		{"inputs":[{"internalType":"bytes","name":"_data","type":"bytes"}],"name":"getL1Fee","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+		{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"name_","type":"string"}],"stateMutability":"view","type":"function"}
+	]`
 )
 
 func EVKLiquidations(ctx context.Context, client *ethclient.Client, startBlock *big.Int, endBlock *big.Int) ([]types.Log, error) {
-	config := query.QueryConfig{
+	q := query.QueryConfig{
 		FromBlock: startBlock,
 		ToBlock:   endBlock,
 		// Addresses: []common.Address{common.HexToAddress("0x1f3134c3f3f8add904b9635acbefc0ea0d0e1ffc")},
-		Topics: [][]common.Hash{{common.HexToHash("0x8246cc71ab01533b5bebc672a636df812f10637ad720797319d5741d5ebb3962")}},
+		Topics: [][]common.Hash{{common.HexToHash(evkLiquidationSignature)}},
+		// ChunkSize: 500, // mainnet
+		// ChunkSize: 10000, // unichain
 	}
-	logs, err := query.PaginatedQuery(ctx, client, config)
+	logs, err := query.PaginatedQuery(ctx, client, q)
 	if err != nil {
 		return nil, err
 	}
@@ -40,24 +60,40 @@ func EVKLiquidations(ctx context.Context, client *ethclient.Client, startBlock *
 	return logs, nil
 }
 
-func ParseEVKLiquidationRevenue(ctx context.Context, client *ethclient.Client, logItem types.Log) (*big.Int, error) {
+func ParseEVKLiquidationRevenue(ctx context.Context, rpcUrl string, client *ethclient.Client, logItem types.Log) (*big.Int, error) {
+	if len(logItem.Data) != 96 {
+		return nil, fmt.Errorf("invalid log data length: %d", len(logItem.Data))
+	}
 	debtToken := logItem.Address
 	debtAmount := new(big.Int).SetBytes(logItem.Data[32:64])
-	debtValue, err := USDValue(ctx, client, logItem.BlockNumber, logItem.TxIndex, &debtToken, debtAmount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get debt value: %v", err)
-	}
+	// debtValue, err := USDValue(ctx, client, logItem.BlockNumber, logItem.TxIndex, &debtToken, debtAmount)
+	// debtValue, err := query.TokenToEthValue(debtToken, debtAmount, big.NewInt(int64(logItem.BlockNumber)), client)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to get debt value: %v", err)
+	// }
 
 	collateralToken := common.BytesToAddress(logItem.Data[12:32])
 	collateralAmount := new(big.Int).SetBytes(logItem.Data[64:96])
-	collateralValue, err := USDValue(ctx, client, logItem.BlockNumber, logItem.TxIndex, &collateralToken, collateralAmount)
+	// collateralValue, err := USDValue(ctx, client, logItem.BlockNumber, logItem.TxIndex, &collateralToken, collateralAmount)
+	// collateralValue, err := query.TokenToEthValue(collateralToken, collateralAmount, big.NewInt(int64(logItem.BlockNumber)), client)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to get collateral value: %v", err)
+	// }
+
+	// log.Println("debtToken: ", debtToken)
+	// log.Println("debtAmount: ", debtAmount)
+	// log.Println("debtValue: ", debtValue)
+	// log.Println("collateralToken: ", collateralToken)
+	// log.Println("collateralAmount: ", collateralAmount)
+	// log.Println("collateralValue: ", collateralValue)
+	// revenue := new(big.Int).Sub(collateralValue, debtValue)
+
+	revenue, debtValue, collateralValue, err := GetEulerRevenue(ctx, rpcUrl, client, debtToken, debtAmount, collateralToken, collateralAmount, big.NewInt(int64(logItem.BlockNumber)), logItem.TxIndex+1)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get collateral value: %v", err)
+		return nil, fmt.Errorf("failed to get revenue: %v", err)
 	}
 
-	// log.Println("debtValue: ", debtValue)
-	// log.Println("collateralValue: ", collateralValue)
-	revenue := new(big.Int).Sub(collateralValue, debtValue)
+	_, _ = debtValue, collateralValue
 
 	return revenue, nil
 }
@@ -185,27 +221,78 @@ func GetL1Fee(ctx context.Context, client *ethclient.Client, logItem types.Log) 
 }
 
 // return profit in USD (18 decimals)
-func ParseEVKLiquidationProfit(ctx context.Context, client *ethclient.Client, logItem types.Log) (*big.Int, error) {
-	revenue, err := ParseEVKLiquidationRevenue(ctx, client, logItem)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get revenue: %v", err)
-	}
-	receipt, err := client.TransactionReceipt(ctx, logItem.TxHash)
+func ParseEVKLiquidationProfit(ctx context.Context, rpcUrl string, client *ethclient.Client, txHash common.Hash) (*big.Int, error) {
+	receipt, err := client.TransactionReceipt(ctx, txHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction: %v", err)
 	}
-	gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
-	ethPrice, err := EthPrice(ctx, client, logItem.BlockNumber)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get eth price: %v", err)
+	var logs []types.Log
+	for _, log := range receipt.Logs {
+		if len(log.Topics) > 0 && log.Topics[0] == common.HexToHash(evkLiquidationSignature) {
+			logs = append(logs, *log)
+		}
 	}
-	l1Gas, err := GetL1Fee(ctx, client, logItem)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get l1 gas: %v", err)
+
+	revenueSum := big.NewInt(0)
+	for i, logItem := range logs {
+		revenue, err := ParseEVKLiquidationRevenue(ctx, rpcUrl, client, logItem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get revenue: %v", err)
+		}
+		revenueSum = new(big.Int).Add(revenueSum, revenue)
+		fmt.Printf("    liquidation event %d revenue: %v\n", i, revenue)
 	}
-	gasCost = new(big.Int).Add(gasCost, l1Gas)
-	gasCost = gasCost.Mul(gasCost, ethPrice)
-	gasCost = gasCost.Div(gasCost, big.NewInt(1e18))
-	profit := new(big.Int).Sub(revenue, gasCost)
-	return profit, nil
+
+	// gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
+
+	// directBribe, err := query.Bribe(ctx, client, txHash)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to get bribe: %v", err)
+	// }
+	// profit := new(big.Int).Sub(revenueSum, new(big.Int).Add(gasCost, directBribe))
+
+	// // fmt.Printf("  %s revenue: %v\n", txHash.Hex(), revenueSum)
+	// // fmt.Printf("  %s gasCost: %v\n", txHash.Hex(), gasCost)
+	// // fmt.Printf("  %s directBribe: %v\n", txHash.Hex(), directBribe)
+	// // fmt.Printf("  %s profit: %v\n", txHash.Hex(), profit)
+	// fmt.Printf("  total revenue: %v\n", revenueSum)
+	// fmt.Printf("  gasCost: %v\n", gasCost)
+	// fmt.Printf("  directBribe: %v\n", directBribe)
+	// return profit, nil
+
+	return revenueSum, nil
+}
+
+func TokenName(ctx context.Context, client *ethclient.Client, token common.Address, blockNumber uint64) (string, error) {
+	parsedABI, err := abi.JSON(strings.NewReader(erc20Abi))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse erc20Abi: %v", err)
+	}
+	data, err := parsedABI.Pack("name")
+	if err != nil {
+		return "", fmt.Errorf("failed to pack name: %v", err)
+	}
+	msg := ethereum.CallMsg{
+		To:   &token,
+		Data: data,
+	}
+	var blockNumberBig *big.Int
+	if blockNumber == 0 {
+		blockNumberBig = nil
+	} else {
+		blockNumberBig = big.NewInt(int64(blockNumber))
+	}
+	output, err := client.CallContract(ctx, msg, blockNumberBig)
+	if err != nil {
+		return "", fmt.Errorf("failed to call contract: %v", err)
+	}
+	var name string
+	if err := parsedABI.UnpackIntoInterface(&name, "name", output); err != nil {
+		return "", fmt.Errorf("failed to unpack name: %v", err)
+	}
+	return name, nil
+}
+
+func ParseEVKLiquidationLogs(ctx context.Context, client *ethclient.Client, logs []types.Log) ([]EulerLogWithRevenue, error) {
+	return nil, nil
 }
