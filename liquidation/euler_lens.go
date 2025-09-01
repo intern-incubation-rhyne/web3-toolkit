@@ -142,9 +142,9 @@ func GetEulerRevenue(
 	revenue := utils.ParseInt256(traceResult.Output[0:32])
 	debtValue := new(big.Int).SetBytes(traceResult.Output[32:64])
 	collateralValue := new(big.Int).SetBytes(traceResult.Output[64:96])
-	fmt.Println("Revenue:", revenue)
-	fmt.Println("Debt Value:", debtValue)
-	fmt.Println("Collateral Value:", collateralValue)
+	// fmt.Println("Revenue:", revenue)
+	// fmt.Println("Debt Value:", debtValue)
+	// fmt.Println("Collateral Value:", collateralValue)
 
 	return revenue, debtValue, collateralValue, nil
 }

@@ -206,3 +206,87 @@ func TestEulerLens(t *testing.T) {
 	t.Logf("Debt Value: %v", debtValue)
 	t.Logf("Collateral Value: %v", collateralValue)
 }
+
+func TestEulerDataUpdate(t *testing.T) {
+	// 1. Load data from mainnet_euler_logs.json
+	data, err := os.ReadFile("data/mainnet_euler_logs.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var logs []types.Log
+	err = json.Unmarshal(data, &logs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Processing %d logs", len(logs))
+
+	// 2. For each log, calculate its revenue with ParseEVKLiquidationRevenue
+	// 3. Add the revenue back into the original data
+	type LogWithRevenue struct {
+		Address          common.Address `json:"address"`
+		Topics           []string       `json:"topics"`
+		Data             []byte         `json:"data"`
+		BlockNumber      uint64         `json:"blockNumber"`
+		TransactionHash  common.Hash    `json:"transactionHash"`
+		TransactionIndex uint           `json:"transactionIndex"`
+		BlockHash        common.Hash    `json:"blockHash"`
+		BlockTimestamp   uint64         `json:"blockTimestamp"`
+		Index            uint           `json:"logIndex"`
+		Removed          bool           `json:"removed"`
+		Revenue          *big.Int       `json:"revenue"`
+	}
+
+	logsWithRevenue := make([]LogWithRevenue, 0, len(logs))
+
+	for i, log := range logs {
+		revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, os.Getenv("MAINNET_RPC_URL"), client, log)
+		if err != nil {
+			t.Logf("Failed to parse revenue for log %d: %v", i, err)
+			// Continue with zero revenue if parsing fails
+			revenue = big.NewInt(0)
+		}
+
+		logsWithRevenue = append(logsWithRevenue, LogWithRevenue{
+			Address: log.Address,
+			Topics: func() []string {
+				topics := make([]string, len(log.Topics))
+				for j, topic := range log.Topics {
+					topics[j] = topic.Hex()
+				}
+				return topics
+			}(),
+			Data:             log.Data,
+			BlockNumber:      log.BlockNumber,
+			TransactionHash:  log.TxHash,
+			TransactionIndex: log.TxIndex,
+			BlockHash:        log.BlockHash,
+			BlockTimestamp:   log.BlockTimestamp,
+			Index:            uint(log.Index),
+			Removed:          log.Removed,
+			Revenue:          revenue,
+		})
+
+		// Add delay to avoid rate limiting
+		time.Sleep(100 * time.Millisecond)
+
+		if i%100 == 0 {
+			t.Logf("Processed %d/%d logs", i+1, len(logs))
+		}
+	}
+
+	// 4. Save the new data in JSON
+	outputFilename := "data/mainnet_euler_logs_with_revenue.json"
+	outputData, err := json.MarshalIndent(logsWithRevenue, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = os.WriteFile(outputFilename, outputData, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Updated data saved to %s", outputFilename)
+}
