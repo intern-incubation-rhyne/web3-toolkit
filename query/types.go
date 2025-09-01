@@ -6,7 +6,22 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 )
+
+type BlockOverrides struct {
+	Number        *hexutil.Big       `json:"number,omitempty"`
+	Time          *hexutil.Uint64    `json:"time,omitempty"`
+	GasLimit      *hexutil.Uint64    `json:"gasLimit,omitempty"`
+	FeeRecipient  *common.Address    `json:"feeRecipient,omitempty"`
+	PrevRandao    *common.Hash       `json:"prevRandao,omitempty"`
+	BaseFeePerGas *hexutil.Big       `json:"baseFeePerGas,omitempty"`
+	BlobBaseFee   *hexutil.Big       `json:"blobBaseFee,omitempty"`
+	BeaconRoot    *common.Hash       `json:"beaconRoot,omitempty"`
+	Withdrawals   *types.Withdrawals `json:"withdrawals,omitempty"`
+}
 
 // RPCRequest represents a JSON-RPC request
 type RPCRequest struct {

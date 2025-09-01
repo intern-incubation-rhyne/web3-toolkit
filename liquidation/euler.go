@@ -60,7 +60,7 @@ func EVKLiquidations(ctx context.Context, client *ethclient.Client, startBlock *
 	return logs, nil
 }
 
-func ParseEVKLiquidationRevenue(ctx context.Context, rpcUrl string, logItem types.Log) (*big.Int, error) {
+func ParseEVKLiquidationRevenue(ctx context.Context, rpcUrl string, client *ethclient.Client, logItem types.Log) (*big.Int, error) {
 	if len(logItem.Data) != 96 {
 		return nil, fmt.Errorf("invalid log data length: %d", len(logItem.Data))
 	}
@@ -88,7 +88,7 @@ func ParseEVKLiquidationRevenue(ctx context.Context, rpcUrl string, logItem type
 	// log.Println("collateralValue: ", collateralValue)
 	// revenue := new(big.Int).Sub(collateralValue, debtValue)
 
-	revenue, debtValue, collateralValue, err := GetEulerRevenue(ctx, rpcUrl, debtToken, debtAmount, collateralToken, collateralAmount, big.NewInt(int64(logItem.BlockNumber)), logItem.TxIndex)
+	revenue, debtValue, collateralValue, err := GetEulerRevenue(ctx, rpcUrl, client, debtToken, debtAmount, collateralToken, collateralAmount, big.NewInt(int64(logItem.BlockNumber)), logItem.TxIndex+1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get revenue: %v", err)
 	}
@@ -235,7 +235,7 @@ func ParseEVKLiquidationProfit(ctx context.Context, rpcUrl string, client *ethcl
 
 	revenueSum := big.NewInt(0)
 	for i, logItem := range logs {
-		revenue, err := ParseEVKLiquidationRevenue(ctx, rpcUrl, logItem)
+		revenue, err := ParseEVKLiquidationRevenue(ctx, rpcUrl, client, logItem)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get revenue: %v", err)
 		}
@@ -243,22 +243,24 @@ func ParseEVKLiquidationProfit(ctx context.Context, rpcUrl string, client *ethcl
 		fmt.Printf("    liquidation event %d revenue: %v\n", i, revenue)
 	}
 
-	gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
+	// gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
 
-	directBribe, err := query.Bribe(ctx, client, txHash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get bribe: %v", err)
-	}
-	profit := new(big.Int).Sub(revenueSum, new(big.Int).Add(gasCost, directBribe))
+	// directBribe, err := query.Bribe(ctx, client, txHash)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to get bribe: %v", err)
+	// }
+	// profit := new(big.Int).Sub(revenueSum, new(big.Int).Add(gasCost, directBribe))
 
-	// fmt.Printf("  %s revenue: %v\n", txHash.Hex(), revenueSum)
-	// fmt.Printf("  %s gasCost: %v\n", txHash.Hex(), gasCost)
-	// fmt.Printf("  %s directBribe: %v\n", txHash.Hex(), directBribe)
-	// fmt.Printf("  %s profit: %v\n", txHash.Hex(), profit)
-	fmt.Printf("  total revenue: %v\n", revenueSum)
-	fmt.Printf("  gasCost: %v\n", gasCost)
-	fmt.Printf("  directBribe: %v\n", directBribe)
-	return profit, nil
+	// // fmt.Printf("  %s revenue: %v\n", txHash.Hex(), revenueSum)
+	// // fmt.Printf("  %s gasCost: %v\n", txHash.Hex(), gasCost)
+	// // fmt.Printf("  %s directBribe: %v\n", txHash.Hex(), directBribe)
+	// // fmt.Printf("  %s profit: %v\n", txHash.Hex(), profit)
+	// fmt.Printf("  total revenue: %v\n", revenueSum)
+	// fmt.Printf("  gasCost: %v\n", gasCost)
+	// fmt.Printf("  directBribe: %v\n", directBribe)
+	// return profit, nil
+
+	return revenueSum, nil
 }
 
 func TokenName(ctx context.Context, client *ethclient.Client, token common.Address, blockNumber uint64) (string, error) {

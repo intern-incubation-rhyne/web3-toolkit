@@ -96,12 +96,12 @@ func TestEthPrice(t *testing.T) {
 }
 
 func TestParseEVKLiquidationRevenue(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(22910856), big.NewInt(22910856))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(22017846), big.NewInt(22017846))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, os.Getenv("MAINNET_RPC_URL"), logs[0])
+	revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, os.Getenv("MAINNET_RPC_URL"), client, logs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestEulerLens(t *testing.T) {
 	collateralAmount, _ := new(big.Int).SetString("46591864627301414905", 10)
 	blockNumber := big.NewInt(21573389)
 	txIndex := uint(1)
-	revenue, debtValue, collateralValue, err := liquidation.GetEulerRevenue(ctx, rpcUrl, debt, debtAmount, collateral, collateralAmount, blockNumber, txIndex)
+	revenue, debtValue, collateralValue, err := liquidation.GetEulerRevenue(ctx, rpcUrl, client, debt, debtAmount, collateral, collateralAmount, blockNumber, txIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
