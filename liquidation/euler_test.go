@@ -37,7 +37,7 @@ func init() {
 }
 
 func TestEVKLiquidations(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21525614), big.NewInt(23190614))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21525614), big.NewInt(23263156))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,9 +267,6 @@ func TestEulerDataUpdate(t *testing.T) {
 			Removed:          log.Removed,
 			Revenue:          revenue,
 		})
-
-		// Add delay to avoid rate limiting
-		time.Sleep(100 * time.Millisecond)
 
 		if i%100 == 0 {
 			t.Logf("Processed %d/%d logs", i+1, len(logs))

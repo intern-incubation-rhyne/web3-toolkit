@@ -2,6 +2,7 @@ package liquidation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
@@ -32,7 +33,7 @@ type LiquidationBonus struct {
 const (
 	morphoLiquidationSignature = "0xa4946ede45d0c6f06a0f5ce92c9ad3b4751452d2fe0e25010783bcab57a67e41"
 
-	morphoAddress = "0x8f5ae9CddB9f68de460C77730b018Ae7E04a140A"
+	morphoAddress = "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"
 
 	morphoAbi                  = `[{"inputs": [{"internalType": "Id","name": "","type": "bytes32"}],"name": "idToMarketParams","outputs": [{"internalType": "address","name": "loanToken","type": "address"},{"internalType": "address","name": "collateralToken","type": "address"},{"internalType": "address","name": "oracle","type": "address"},{"internalType": "address","name": "irm","type": "address"},{"internalType": "uint256","name": "lltv","type": "uint256"}],"stateMutability": "view","type": "function"}]`
 	morphoChainlinkOracleV2Abi = `[{"inputs":[],"name":"price","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`
@@ -89,20 +90,27 @@ func ParseMorphoLiquidationBonus(ctx context.Context, client *ethclient.Client, 
 	}
 
 	loanAmount := new(big.Int).SetBytes(logItem.Data[0:32])
-	collateralToken := marketParams.CollateralToken
+
 	collateralAmount := new(big.Int).SetBytes(logItem.Data[64:96])
-	collateralDecimals, err := Decimals(ctx, client, collateralToken, logItem.BlockNumber)
-	if err != nil {
-		return LiquidationBonus{}, fmt.Errorf("failed to get collateral decimals: %v", err)
-	}
 
 	collateralPrice, err := CollateralToLoanPrice(ctx, client, marketParams.Oracle, logItem.BlockNumber)
 	if err != nil {
 		return LiquidationBonus{}, fmt.Errorf("failed to get collateral price: %v", err)
 	}
 
+	// collateralToken := marketParams.CollateralToken
+	// collateralDecimals, err := Decimals(ctx, client, collateralToken, logItem.BlockNumber)
+	// if err != nil {
+	// 	return LiquidationBonus{}, fmt.Errorf("failed to get collateral decimals: %v", err)
+	// }
+
+	// fmt.Printf("collateralAmount: %s\n", collateralAmount.String())
+	// fmt.Printf("collateralPrice: %s\n", collateralPrice.String())
+	// fmt.Printf("collateralDecimals: %d\n", collateralDecimals)
+
 	collateralValue := new(big.Int).Mul(collateralAmount, collateralPrice)
-	collateralValue = collateralValue.Div(collateralValue, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(collateralDecimals+18)), nil))
+	// collateralValue = collateralValue.Div(collateralValue, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(collateralDecimals+18)), nil))
+	collateralValue = collateralValue.Div(collateralValue, new(big.Int).Exp(big.NewInt(10), big.NewInt(36), nil))
 
 	return LiquidationBonus{
 		MarketId:    logItem.Topics[1],
@@ -110,6 +118,38 @@ func ParseMorphoLiquidationBonus(ctx context.Context, client *ethclient.Client, 
 		LoanAmount:  loanAmount,
 		SeizedValue: collateralValue,
 	}, nil
+}
+
+func ParseMorphoTxProfit(ctx context.Context, client *ethclient.Client, txHash common.Hash) (*big.Int, error) {
+	receipt, err := client.TransactionReceipt(ctx, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction receipt: %v", err)
+	}
+
+	totalRevenue := big.NewInt(0)
+	for _, log := range receipt.Logs {
+		bonus, err := ParseMorphoLiquidationBonus(ctx, client, *log)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse bonus: %v", err)
+		}
+		ethValue, err := query.TokenToEthValue(bonus.LoanToken, bonus.Bonus(), big.NewInt(int64(log.BlockNumber)), client)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get eth value: %v", err)
+		}
+		totalRevenue = new(big.Int).Add(totalRevenue, ethValue)
+	}
+
+	gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
+	directBribe, err := query.Bribe(ctx, client, txHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bribe: %v", err)
+	}
+
+	profit := new(big.Int).Sub(totalRevenue, new(big.Int).Add(gasCost, directBribe))
+	fmt.Printf("  total revenue: %v\n", totalRevenue)
+	fmt.Printf("  gasCost: %v\n", gasCost)
+	fmt.Printf("  directBribe: %v\n", directBribe)
+	return profit, nil
 }
 
 // 1 whole collateral token quoted by load token unit in 18 decimals
@@ -175,4 +215,12 @@ func (lb *LiquidationBonus) Bonus() *big.Int {
 func (lb *LiquidationBonus) BonusRate() *big.Float {
 	bonusRate := new(big.Float).Quo(new(big.Float).SetInt(lb.Bonus()), new(big.Float).SetInt(lb.LoanAmount))
 	return bonusRate
+}
+
+func (lb *LiquidationBonus) Print() {
+	data, err := json.MarshalIndent(lb, "", "  ")
+	if err != nil {
+		fmt.Printf("Failed to marshal liquidation bonus: %v", err)
+	}
+	fmt.Println(string(data))
 }
