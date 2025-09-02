@@ -145,7 +145,7 @@ func TestMorphoStatistic(t *testing.T) {
 }
 
 func TestMorphoProfits(t *testing.T) {
-	data, err := os.ReadFile("data/mainnet_euler_logs.json")
+	data, err := os.ReadFile("data/mainnet_morpho_logs.json")
 	if err != nil {
 		t.Fatal(err)
 	}

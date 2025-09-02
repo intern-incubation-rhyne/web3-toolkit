@@ -125,10 +125,16 @@ func ParseMorphoTxProfit(ctx context.Context, client *ethclient.Client, txHash c
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction receipt: %v", err)
 	}
+	var logs []types.Log
+	for _, log := range receipt.Logs {
+		if len(log.Topics) > 0 && log.Topics[0] == common.HexToHash(morphoLiquidationSignature) {
+			logs = append(logs, *log)
+		}
+	}
 
 	totalRevenue := big.NewInt(0)
-	for _, log := range receipt.Logs {
-		bonus, err := ParseMorphoLiquidationBonus(ctx, client, *log)
+	for _, log := range logs {
+		bonus, err := ParseMorphoLiquidationBonus(ctx, client, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse bonus: %v", err)
 		}
