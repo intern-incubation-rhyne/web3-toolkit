@@ -120,10 +120,10 @@ func ParseMorphoLiquidationBonus(ctx context.Context, client *ethclient.Client, 
 	}, nil
 }
 
-func ParseMorphoTxProfit(ctx context.Context, client *ethclient.Client, txHash common.Hash) (*big.Int, error) {
+func ParseMorphoTxProfit(ctx context.Context, client *ethclient.Client, txHash common.Hash) (*big.Int, *big.Int, error) {
 	receipt, err := client.TransactionReceipt(ctx, txHash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction receipt: %v", err)
+		return nil, nil, fmt.Errorf("failed to get transaction receipt: %v", err)
 	}
 	var logs []types.Log
 	for _, log := range receipt.Logs {
@@ -136,11 +136,11 @@ func ParseMorphoTxProfit(ctx context.Context, client *ethclient.Client, txHash c
 	for _, log := range logs {
 		bonus, err := ParseMorphoLiquidationBonus(ctx, client, log)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse bonus: %v", err)
+			return nil, nil, fmt.Errorf("failed to parse bonus: %v", err)
 		}
 		ethValue, err := query.TokenToEthValue(bonus.LoanToken, bonus.Bonus(), big.NewInt(int64(log.BlockNumber)), client)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get eth value: %v", err)
+			return nil, nil, fmt.Errorf("failed to get eth value: %v", err)
 		}
 		totalRevenue = new(big.Int).Add(totalRevenue, ethValue)
 	}
@@ -148,14 +148,14 @@ func ParseMorphoTxProfit(ctx context.Context, client *ethclient.Client, txHash c
 	gasCost := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), receipt.EffectiveGasPrice)
 	directBribe, err := query.Bribe(ctx, client, txHash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get bribe: %v", err)
+		return nil, nil, fmt.Errorf("failed to get bribe: %v", err)
 	}
 
 	profit := new(big.Int).Sub(totalRevenue, new(big.Int).Add(gasCost, directBribe))
 	fmt.Printf("  total revenue: %v\n", totalRevenue)
 	fmt.Printf("  gasCost: %v\n", gasCost)
 	fmt.Printf("  directBribe: %v\n", directBribe)
-	return profit, nil
+	return profit, totalRevenue, nil
 }
 
 // 1 whole collateral token quoted by load token unit in 18 decimals
