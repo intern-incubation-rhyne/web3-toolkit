@@ -14,8 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-func TestMorpho(t *testing.T) {
-	logs, err := liquidation.MorphoLiquidations(ctx, client, big.NewInt(21525614), big.NewInt(24957375))
+func TestMorphoLiquidations(t *testing.T) {
+	logs, err := liquidation.MorphoLiquidations(ctx, client, big.NewInt(20701950), big.NewInt(26171693))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,9 +332,8 @@ func TestMorphoProfits(t *testing.T) {
 	fmt.Printf("Total Profit: %.4f ETH\n", new(big.Float).Quo(new(big.Float).SetInt(totalProfit), big.NewFloat(1e18)))
 }
 
-func TestMorphoDataUpdate(t *testing.T) {
-	// 1. Load data from mainnet_euler_logs.json
-	data, err := os.ReadFile("data/mainnet_morpho_logs.json")
+func TestAugmentMorphoLogs(t *testing.T) {
+	data, err := os.ReadFile("data/unichainOEV_morpho_logs.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,9 +346,7 @@ func TestMorphoDataUpdate(t *testing.T) {
 
 	t.Logf("Processing %d logs", len(logs))
 
-	// 2. For each log, calculate its revenue with ParseEVKLiquidationRevenue
-	// 3. Add the revenue back into the original data
-	type LogWithRevenue struct {
+	type AugmentedLog struct {
 		Address          common.Address `json:"address"`
 		Topics           []string       `json:"topics"`
 		Data             []byte         `json:"data"`
@@ -365,7 +362,7 @@ func TestMorphoDataUpdate(t *testing.T) {
 		MarketId         common.Hash    `json:"marketId"`
 	}
 
-	logsWithRevenue := make([]LogWithRevenue, 0, len(logs))
+	logsWithRevenue := make([]AugmentedLog, 0, len(logs))
 
 	for i, log := range logs {
 		bonus, err := liquidation.ParseMorphoLiquidationBonus(ctx, client, log)
@@ -385,7 +382,7 @@ func TestMorphoDataUpdate(t *testing.T) {
 		}
 		toAddress := *tx.To()
 
-		logsWithRevenue = append(logsWithRevenue, LogWithRevenue{
+		logsWithRevenue = append(logsWithRevenue, AugmentedLog{
 			Address: log.Address,
 			Topics: func() []string {
 				topics := make([]string, len(log.Topics))
@@ -412,8 +409,7 @@ func TestMorphoDataUpdate(t *testing.T) {
 		}
 	}
 
-	// 4. Save the new data in JSON
-	outputFilename := "data/mainnet_morpho_logs_with_revenue.json"
+	outputFilename := "data/unichainOEV_augmented_morpho_logs.json"
 	outputData, err := json.MarshalIndent(logsWithRevenue, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -424,5 +420,5 @@ func TestMorphoDataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("Updated data saved to %s", outputFilename)
+	t.Logf("augmented logs saved to %s", outputFilename)
 }

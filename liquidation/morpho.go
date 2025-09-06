@@ -33,7 +33,11 @@ type LiquidationBonus struct {
 const (
 	morphoLiquidationSignature = "0xa4946ede45d0c6f06a0f5ce92c9ad3b4751452d2fe0e25010783bcab57a67e41"
 
-	morphoAddress = "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"
+	// // mainnet
+	// morphoAddress = "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"
+
+	// unichain
+	morphoAddress = "0x8f5ae9CddB9f68de460C77730b018Ae7E04a140A"
 
 	morphoAbi                  = `[{"inputs": [{"internalType": "Id","name": "","type": "bytes32"}],"name": "idToMarketParams","outputs": [{"internalType": "address","name": "loanToken","type": "address"},{"internalType": "address","name": "collateralToken","type": "address"},{"internalType": "address","name": "oracle","type": "address"},{"internalType": "address","name": "irm","type": "address"},{"internalType": "uint256","name": "lltv","type": "uint256"}],"stateMutability": "view","type": "function"}]`
 	morphoChainlinkOracleV2Abi = `[{"inputs":[],"name":"price","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`

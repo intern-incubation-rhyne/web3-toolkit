@@ -37,7 +37,7 @@ func init() {
 }
 
 func TestEVKLiquidations(t *testing.T) {
-	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(21525614), big.NewInt(23263156))
+	logs, err := liquidation.EVKLiquidations(ctx, client, big.NewInt(20701950), big.NewInt(26171693))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestEVKLiquidations(t *testing.T) {
 	t.Logf("Found %d logs", len(logs))
 
 	// Save logs to JSON file
-	filename := "data/mainnet_euler_logs.json"
+	filename := "data/unichainOEV_euler_logs.json"
 	data, err := json.MarshalIndent(logs, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -207,9 +207,9 @@ func TestEulerLens(t *testing.T) {
 	t.Logf("Collateral Value: %v", collateralValue)
 }
 
-func TestEulerDataUpdate(t *testing.T) {
+func TestAugmentEulerLogs(t *testing.T) {
 	// 1. Load data from mainnet_euler_logs.json
-	data, err := os.ReadFile("data/mainnet_euler_logs.json")
+	data, err := os.ReadFile("data/unichainOEV_euler_logs.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,31 +224,38 @@ func TestEulerDataUpdate(t *testing.T) {
 
 	// 2. For each log, calculate its revenue with ParseEVKLiquidationRevenue
 	// 3. Add the revenue back into the original data
-	type LogWithRevenue struct {
+	type AugmentedLog struct {
 		Address          common.Address `json:"address"`
 		Topics           []string       `json:"topics"`
 		Data             []byte         `json:"data"`
 		BlockNumber      uint64         `json:"blockNumber"`
 		TransactionHash  common.Hash    `json:"transactionHash"`
 		TransactionIndex uint           `json:"transactionIndex"`
+		To               common.Address `json:"to"`
 		BlockHash        common.Hash    `json:"blockHash"`
 		BlockTimestamp   uint64         `json:"blockTimestamp"`
 		Index            uint           `json:"logIndex"`
 		Removed          bool           `json:"removed"`
-		Revenue          *big.Int       `json:"revenue"`
+		// Revenue          *big.Int       `json:"revenue"`
 	}
 
-	logsWithRevenue := make([]LogWithRevenue, 0, len(logs))
+	logsWithRevenue := make([]AugmentedLog, 0, len(logs))
 
 	for i, log := range logs {
-		revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, os.Getenv("MAINNET_RPC_URL"), client, log)
+		// revenue, err := liquidation.ParseEVKLiquidationRevenue(ctx, os.Getenv("UNICHAIN_RPC_URL"), client, log)
+		// if err != nil {
+		// 	t.Logf("Failed to parse revenue for log %d: %v", i, err)
+		// 	// Continue with zero revenue if parsing fails
+		// 	revenue = big.NewInt(0)
+		// }
+		tx, _, err := client.TransactionByHash(ctx, log.TxHash)
 		if err != nil {
-			t.Logf("Failed to parse revenue for log %d: %v", i, err)
-			// Continue with zero revenue if parsing fails
-			revenue = big.NewInt(0)
+			t.Log(err)
+			continue
 		}
+		toAddress := *tx.To()
 
-		logsWithRevenue = append(logsWithRevenue, LogWithRevenue{
+		logsWithRevenue = append(logsWithRevenue, AugmentedLog{
 			Address: log.Address,
 			Topics: func() []string {
 				topics := make([]string, len(log.Topics))
@@ -261,11 +268,12 @@ func TestEulerDataUpdate(t *testing.T) {
 			BlockNumber:      log.BlockNumber,
 			TransactionHash:  log.TxHash,
 			TransactionIndex: log.TxIndex,
+			To:               toAddress,
 			BlockHash:        log.BlockHash,
 			BlockTimestamp:   log.BlockTimestamp,
 			Index:            uint(log.Index),
 			Removed:          log.Removed,
-			Revenue:          revenue,
+			// Revenue:          revenue,
 		})
 
 		if i%100 == 0 {
@@ -274,7 +282,7 @@ func TestEulerDataUpdate(t *testing.T) {
 	}
 
 	// 4. Save the new data in JSON
-	outputFilename := "data/mainnet_euler_logs_with_revenue.json"
+	outputFilename := "data/unichainOEV_augmented_euler_logs.json"
 	outputData, err := json.MarshalIndent(logsWithRevenue, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -285,5 +293,5 @@ func TestEulerDataUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf("Updated data saved to %s", outputFilename)
+	t.Logf("augmented logs saved to %s", outputFilename)
 }

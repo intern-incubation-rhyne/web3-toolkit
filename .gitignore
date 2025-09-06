@@ -1,4 +1,6 @@
 config/config.go
 trace/traceResult.json
 .env
-.liquidation/charts/
+liquidation/charts/
+liquidation/data/
+liquidation/logs/
