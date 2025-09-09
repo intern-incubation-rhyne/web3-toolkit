@@ -170,3 +170,11 @@ func PaginatedQuery(ctx context.Context, client *ethclient.Client, config QueryC
 
 	return allLogs, nil
 }
+
+func LatestBlock(ctx context.Context, client *ethclient.Client) (*big.Int, error) {
+	header, err := client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest block: %w", err)
+	}
+	return header.Number, nil
+}
