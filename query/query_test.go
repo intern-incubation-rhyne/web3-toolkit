@@ -69,6 +69,10 @@ func TestSearchBundle(t *testing.T) {
 		"0xa7fc99ed7617309ee23f63ae90196a1e490d362e6f6a547a59bc809ee2291782",
 		"0xa4946ede45d0c6f06a0f5ce92c9ad3b4751452d2fe0e25010783bcab57a67e41",
 	}
+	addresses := []common.Address{
+		common.HexToAddress("0xE1A3d58dc6C516Ef18628ce7E13cfE44B4Ac1552"),
+		common.HexToAddress("0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"),
+	}
 
 	// startBlock := big.NewInt(21525614)
 	// endBlock := big.NewInt(23282386)
@@ -78,6 +82,7 @@ func TestSearchBundle(t *testing.T) {
 
 	config := query.BundleSearchConfig{
 		EventSignatures: eventSignatures,
+		Addresses:       addresses,
 		StartBlock:      startBlock,
 		EndBlock:        endBlock,
 		MaxWorkers:      2,

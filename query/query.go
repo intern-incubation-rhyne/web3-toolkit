@@ -177,6 +177,7 @@ func PaginatedQuery(ctx context.Context, client *ethclient.Client, config QueryC
 // BundleSearchConfig represents configuration for bundle search
 type BundleSearchConfig struct {
 	EventSignatures []string
+	Addresses       []common.Address // Addresses to match for each transaction in sequence
 	StartBlock      *big.Int
 	EndBlock        *big.Int
 	MaxWorkers      int
@@ -194,6 +195,9 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 	}
 	if config.StartBlock.Cmp(config.EndBlock) > 0 {
 		return nil, fmt.Errorf("StartBlock must be less than or equal to EndBlock")
+	}
+	if len(config.Addresses) > 0 && len(config.Addresses) != len(config.EventSignatures) {
+		return nil, fmt.Errorf("number of addresses must match number of event signatures")
 	}
 
 	// Set defaults
@@ -218,6 +222,7 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 	queryConfig := QueryConfig{
 		FromBlock:  config.StartBlock,
 		ToBlock:    config.EndBlock,
+		Addresses:  []common.Address{config.Addresses[0]},
 		Topics:     [][]common.Hash{{firstSigHash}},
 		MaxWorkers: config.MaxWorkers,
 		ChunkSize:  config.ChunkSize,
@@ -275,7 +280,7 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 			}
 
 			// Check if we can find a bundle starting from this transaction
-			bundleTxs := findBundleInBlock(ctx, client, block, txIndex, config.EventSignatures)
+			bundleTxs := findBundleInBlock(ctx, client, block, txIndex, config.EventSignatures, config.Addresses)
 			if len(bundleTxs) > 0 {
 				mu.Lock()
 				bundles = append(bundles, bundleTxs)
@@ -287,7 +292,7 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 }
 
 // findBundleInBlock attempts to find a bundle starting from a specific transaction index
-func findBundleInBlock(ctx context.Context, client *ethclient.Client, block *types.Block, startIndex int, signatures []string) []*types.Transaction {
+func findBundleInBlock(ctx context.Context, client *ethclient.Client, block *types.Block, startIndex int, signatures []string, addresses []common.Address) []*types.Transaction {
 	transactions := block.Transactions()
 
 	// We need at least as many transactions as signatures
@@ -313,13 +318,24 @@ func findBundleInBlock(ctx context.Context, client *ethclient.Client, block *typ
 			return nil
 		}
 
-		// Check if any log matches the current signature
+		// Check if any log matches the current signature and address
 		sigHash := common.HexToHash(sig)
 		found := false
 		for _, log := range receipt.Logs {
 			if len(log.Topics) > 0 && log.Topics[0] == sigHash {
-				found = true
-				break
+				// Check address matching if addresses are provided
+				if len(addresses) > i {
+					expectedAddr := addresses[i]
+					// If address is zero address, it matches any address
+					if expectedAddr == (common.Address{}) || log.Address == expectedAddr {
+						found = true
+						break
+					}
+				} else {
+					// No address filtering, just check signature
+					found = true
+					break
+				}
 			}
 		}
 
