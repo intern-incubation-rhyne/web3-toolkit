@@ -2,15 +2,19 @@ package query_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"os"
+	"path/filepath"
 	"testing"
 	"toolkit/config"
+	"toolkit/liquidation"
 	"toolkit/query"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
 )
@@ -64,21 +68,28 @@ func TestBribe(t *testing.T) {
 	t.Logf("bribe: %v", bribe)
 }
 
+type AugmentedBundle struct {
+	Transactions []*types.Transaction `json:"transactions"`
+	Revenue      *big.Int             `json:"revenue"`
+	Profit       *big.Int             `json:"profit"`
+	Margin       *big.Float           `json:"margin"`
+}
+
 func TestSearchBundle(t *testing.T) {
 	eventSignatures := []string{
-		"0xa7fc99ed7617309ee23f63ae90196a1e490d362e6f6a547a59bc809ee2291782",
-		"0xa4946ede45d0c6f06a0f5ce92c9ad3b4751452d2fe0e25010783bcab57a67e41",
+		"0xc797025feeeaf2cd924c99e9205acb8ec04d5cad21c41ce637a38fb6dee6016a",
+		"0x1547a878dc89ad3c367b6338b4be6a65a5dd74fb77ae044da1e8747ef1f4f62f",
 	}
 	addresses := []common.Address{
-		common.HexToAddress("0xE1A3d58dc6C516Ef18628ce7E13cfE44B4Ac1552"),
-		common.HexToAddress("0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"),
+		common.HexToAddress("0x7d4E742018fb52E48b08BE73d041C18B21de6Fb5"),
+		{},
 	}
 
 	// startBlock := big.NewInt(21525614)
 	// endBlock := big.NewInt(23282386)
 
-	startBlock := big.NewInt(23031978)
-	endBlock := big.NewInt(23031980)
+	startBlock := big.NewInt(22747180)
+	endBlock := big.NewInt(22747195)
 
 	config := query.BundleSearchConfig{
 		EventSignatures: eventSignatures,
@@ -97,11 +108,80 @@ func TestSearchBundle(t *testing.T) {
 		t.Fatalf("SearchBundle failed: %v", err)
 	}
 
-	fmt.Printf("Found %d bundle transactions\n", len(bundleTxs))
+	fmt.Printf("Found %d bundles\n", len(bundleTxs))
 
 	query.SaveBundlesToFile(bundleTxs, "data/test_bundles.json")
 
 	if len(bundleTxs) == 0 {
-		t.Log("No bundle transactions found - this might be normal for the given block range and signatures")
+		t.Log("No bundle found - this might be normal for the given block range and signatures")
 	}
+}
+
+func TestAugmentMorphoBundle(t *testing.T) {
+	// Load existing bundles from test_bundles.json
+	bundleData, err := os.ReadFile("data/test_bundles.json")
+	if err != nil {
+		t.Fatalf("Failed to read test_bundles.json: %v", err)
+	}
+
+	var bundleTxs [][]*types.Transaction
+	err = json.Unmarshal(bundleData, &bundleTxs)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal bundles: %v", err)
+	}
+
+	fmt.Printf("Loaded %d bundles from test_bundles.json\n", len(bundleTxs))
+
+	// Augment each bundle with revenue, profit, and margin data
+	var augmentedBundles []AugmentedBundle
+	for _, bundle := range bundleTxs {
+		if len(bundle) < 2 {
+			continue // Skip incomplete bundles
+		}
+
+		// Get profit data from the second transaction (Morpho liquidation)
+		profit, totalRevenue, err := liquidation.ParseMorphoTxProfit(ctx, client, bundle[1].Hash())
+		if err != nil {
+			fmt.Printf("Failed to parse profit for tx %s: %v\n", bundle[1].Hash().Hex(), err)
+			continue
+		}
+
+		// Calculate margin
+		margin := new(big.Float).Quo(new(big.Float).SetInt(totalRevenue), new(big.Float).SetInt(profit))
+
+		augmentedBundles = append(augmentedBundles, AugmentedBundle{
+			Transactions: bundle,
+			Revenue:      totalRevenue,
+			Profit:       profit,
+			Margin:       margin,
+		})
+
+		fmt.Printf("Bundle with tx %s:\n", bundle[1].Hash().Hex())
+		fmt.Printf("  Revenue: %v\n", totalRevenue)
+		fmt.Printf("  Profit: %v\n", profit)
+		fmt.Printf("  Margin: %v\n", margin)
+	}
+
+	// Save augmented bundles to a new file
+	outputFile := "data/augmented_morpho_bundles.json"
+	data, err := json.MarshalIndent(augmentedBundles, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal augmented bundles: %v", err)
+	}
+
+	// Create directory if it doesn't exist
+	dir := filepath.Dir(outputFile)
+	if dir != "." {
+		err := os.MkdirAll(dir, 0755)
+		if err != nil {
+			t.Fatalf("Failed to create directory: %v", err)
+		}
+	}
+
+	err = os.WriteFile(outputFile, data, 0644)
+	if err != nil {
+		t.Fatalf("Failed to write augmented bundles: %v", err)
+	}
+
+	fmt.Printf("Saved %d augmented bundles to %s\n", len(augmentedBundles), outputFile)
 }

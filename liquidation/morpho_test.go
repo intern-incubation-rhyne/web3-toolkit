@@ -192,7 +192,7 @@ func TestMorphoStatistic(t *testing.T) {
 }
 
 func TestMorphoTxProfit(t *testing.T) {
-	txHash := common.HexToHash("0x85f35a2fffc14c6a0b5744401b31ec3ff902f5981ff78d42af1a82f81c084595")
+	txHash := common.HexToHash("0x68320c3da0f070f097350facd56588f40cf0b0dc170d34537ab1ee89209ee88a")
 	profit, totalRevenue, err := liquidation.ParseMorphoTxProfit(ctx, client, txHash)
 	if err != nil {
 		t.Fatal(err)

@@ -185,6 +185,13 @@ type BundleSearchConfig struct {
 	OutputFile      string
 }
 
+// TxInfo holds the essential transaction information from logs
+type TxInfo struct {
+	Hash        common.Hash
+	BlockNumber uint64
+	TxIndex     uint
+}
+
 // SearchBundle searches for transaction bundles matching a sequence of event signatures
 func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSearchConfig) ([][]*types.Transaction, error) {
 	if len(config.EventSignatures) == 0 {
@@ -200,177 +207,92 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 		return nil, fmt.Errorf("number of addresses must match number of event signatures")
 	}
 
-	// Set defaults
-	if config.MaxWorkers <= 0 {
-		config.MaxWorkers = 3
-	}
-	if config.ChunkSize <= 0 {
-		config.ChunkSize = 1000
-	}
-	if config.OutputFile == "" {
-		config.OutputFile = fmt.Sprintf("bundles_%s_%s.json",
-			config.StartBlock.String(), config.EndBlock.String())
-	}
-
-	fmt.Printf("Searching for bundles with %d event signatures from block %s to %s\n",
-		len(config.EventSignatures), config.StartBlock.String(), config.EndBlock.String())
-
-	// First, get all logs matching the first event signature
-	firstSig := config.EventSignatures[0]
-	firstSigHash := common.HexToHash(firstSig)
-
-	queryConfig := QueryConfig{
-		FromBlock:  config.StartBlock,
-		ToBlock:    config.EndBlock,
-		Addresses:  []common.Address{config.Addresses[0]},
-		Topics:     [][]common.Hash{{firstSigHash}},
-		MaxWorkers: config.MaxWorkers,
-		ChunkSize:  config.ChunkSize,
-	}
-
-	allLogs, err := PaginatedQuery(ctx, client, queryConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query first signature logs: %w", err)
-	}
-
-	fmt.Printf("Found %d logs matching first signature %s\n", len(allLogs), firstSig)
-
-	// Group logs by block number and transaction hash
-	blockTxMap := make(map[string]map[string][]types.Log)
-	for _, log := range allLogs {
-		blockKey := big.NewInt(int64(log.BlockNumber)).String()
-		txKey := log.TxHash.Hex()
-
-		if blockTxMap[blockKey] == nil {
-			blockTxMap[blockKey] = make(map[string][]types.Log)
-		}
-		blockTxMap[blockKey][txKey] = append(blockTxMap[blockKey][txKey], log)
-	}
-
-	var bundles [][]*types.Transaction
-	var mu sync.Mutex
-
-	// Process each block
-	for blockNumStr, txMap := range blockTxMap {
-		blockNum := new(big.Int)
-		blockNum.SetString(blockNumStr, 10)
-
-		// Get block details to get transaction order
-		block, err := client.BlockByNumber(ctx, blockNum)
-		if err != nil {
-			fmt.Printf("Failed to get block %s: %v\n", blockNumStr, err)
-			continue
-		}
-
-		// Collect all potential starting transaction indices
-		var startIndices []int
-		for txHashStr := range txMap {
-			txHash := common.HexToHash(txHashStr)
-
-			// Find transaction index in block
-			txIndex := -1
-			for i, tx := range block.Transactions() {
-				if tx.Hash() == txHash {
-					txIndex = i
-					break
-				}
-			}
-
-			if txIndex != -1 {
-				startIndices = append(startIndices, txIndex)
-			}
-		}
-
-		// Process potential bundles concurrently
-		if len(startIndices) > 0 {
-			var wg sync.WaitGroup
-			bundleChan := make(chan []*types.Transaction, len(startIndices))
-
-			for _, startIndex := range startIndices {
-				wg.Add(1)
-				go func(idx int) {
-					defer wg.Done()
-					bundleTxs := findBundleInBlock(ctx, client, block, idx, config.EventSignatures, config.Addresses)
-					if len(bundleTxs) > 0 {
-						bundleChan <- bundleTxs
-					}
-				}(startIndex)
-			}
-
-			// Close channel when all goroutines are done
-			go func() {
-				wg.Wait()
-				close(bundleChan)
-			}()
-
-			// Collect results
-			for bundleTxs := range bundleChan {
-				mu.Lock()
-				bundles = append(bundles, bundleTxs)
-				mu.Unlock()
-			}
-		}
-	}
-	return bundles, nil
-}
-
-// findBundleInBlock attempts to find a bundle starting from a specific transaction index
-func findBundleInBlock(ctx context.Context, client *ethclient.Client, block *types.Block, startIndex int, signatures []string, addresses []common.Address) []*types.Transaction {
-	transactions := block.Transactions()
-
-	// We need at least as many transactions as signatures
-	if len(transactions)-startIndex < len(signatures) {
-		return nil
-	}
-
-	var bundleTxs []*types.Transaction
-
-	// Check each signature in sequence
-	for i, sig := range signatures {
-		txIndex := startIndex + i
-		if txIndex >= len(transactions) {
-			return nil
-		}
-
-		tx := transactions[txIndex]
-		txHash := tx.Hash()
-
-		// Get transaction receipt to check logs
-		receipt, err := client.TransactionReceipt(ctx, txHash)
-		if err != nil {
-			return nil
-		}
-
-		// Check if any log matches the current signature and address
+	// Get logs for each signature and address pair
+	var allTxInfos [][]TxInfo
+	for i, sig := range config.EventSignatures {
 		sigHash := common.HexToHash(sig)
-		found := false
-		for _, log := range receipt.Logs {
-			if len(log.Topics) > 0 && log.Topics[0] == sigHash {
-				// Check address matching if addresses are provided
-				if len(addresses) > i {
-					expectedAddr := addresses[i]
-					// If address is zero address, it matches any address
-					if expectedAddr == (common.Address{}) || log.Address == expectedAddr {
-						found = true
-						break
-					}
-				} else {
-					// No address filtering, just check signature
-					found = true
+
+		queryConfig := QueryConfig{
+			FromBlock:  config.StartBlock,
+			ToBlock:    config.EndBlock,
+			Topics:     [][]common.Hash{{sigHash}},
+			MaxWorkers: config.MaxWorkers,
+			ChunkSize:  config.ChunkSize,
+		}
+
+		// Add address filter if provided and not zero address
+		if len(config.Addresses) > i && config.Addresses[i] != (common.Address{}) {
+			queryConfig.Addresses = []common.Address{config.Addresses[i]}
+		}
+
+		logs, err := PaginatedQuery(ctx, client, queryConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query signature %d logs: %w", i, err)
+		}
+		fmt.Println("Found", len(logs), "logs for pattern", i)
+		fmt.Println("    Address:", config.Addresses[i])
+		fmt.Println("    Event Signature:", config.EventSignatures[i])
+
+		// Extract transaction info from logs
+		var txInfos []TxInfo
+		for _, log := range logs {
+			txInfos = append(txInfos, TxInfo{
+				Hash:        log.TxHash,
+				BlockNumber: log.BlockNumber,
+				TxIndex:     log.TxIndex,
+			})
+		}
+		allTxInfos = append(allTxInfos, txInfos)
+	}
+
+	// Find bundles by matching transaction indices
+	var bundles [][]*types.Transaction
+
+	// For each transaction in the first signature's logs
+	for _, firstTx := range allTxInfos[0] {
+		// Try to find a sequence starting with this transaction
+		var bundleTxs []TxInfo
+		bundleTxs = append(bundleTxs, firstTx)
+
+		// Try to match subsequent transactions
+		foundBundle := true
+		for i := 1; i < len(allTxInfos); i++ {
+			foundNext := false
+			expectedIndex := firstTx.TxIndex + uint(i)
+
+			// Look for a transaction with matching block number and expected index
+			for _, tx := range allTxInfos[i] {
+				if tx.BlockNumber == firstTx.BlockNumber && tx.TxIndex == expectedIndex {
+					bundleTxs = append(bundleTxs, tx)
+					foundNext = true
 					break
 				}
 			}
+
+			if !foundNext {
+				foundBundle = false
+				break
+			}
 		}
 
-		if !found {
-			return nil
+		// If we found a complete bundle, fetch the actual transactions
+		if foundBundle && len(bundleTxs) == len(config.EventSignatures) {
+			var txs []*types.Transaction
+			for _, txInfo := range bundleTxs {
+				tx, _, err := client.TransactionByHash(ctx, txInfo.Hash)
+				if err != nil {
+					fmt.Printf("Failed to get transaction %s: %v\n", txInfo.Hash.Hex(), err)
+					continue
+				}
+				txs = append(txs, tx)
+			}
+			if len(txs) == len(bundleTxs) {
+				bundles = append(bundles, txs)
+			}
 		}
-
-		// Add transaction to bundle
-		bundleTxs = append(bundleTxs, tx)
 	}
 
-	return bundleTxs
+	return bundles, nil
 }
 
 // saveBundlesToFile saves bundles (as lists of transactions) to a JSON file
