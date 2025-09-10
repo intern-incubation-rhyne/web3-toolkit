@@ -70,7 +70,7 @@ func TestDecimals(t *testing.T) {
 }
 
 func TestParseMorphoLiquidationBonus(t *testing.T) {
-	blockNumber := big.NewInt(21569283)
+	blockNumber := big.NewInt(23031979)
 	logItem, err := liquidation.MorphoLiquidations(ctx, client, blockNumber, blockNumber)
 	if err != nil {
 		t.Fatal(err)

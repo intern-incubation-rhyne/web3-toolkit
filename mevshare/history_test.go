@@ -42,15 +42,15 @@ func TestHistoryByBlock(t *testing.T) {
 }
 
 func TestHistoryByBlockRange(t *testing.T) {
-	blockStart := big.NewInt(23325176)
-	// blockEnd := big.NewInt(23031980)
+	blockStart := big.NewInt(23142045)
+	blockEnd := big.NewInt(23142052)
 
-	resp, err := client.HistoryByBlockRange(ctx, blockStart, nil)
+	resp, err := client.HistoryByBlockRange(ctx, blockStart, blockEnd)
 	if err != nil {
 		t.Fatalf("HistoryByBlockRange failed: %v", err)
 	}
 
-	err = mevshare.SaveToFile(resp, fmt.Sprintf("data/history_%s_%s.json", blockStart.String(), "nil"))
+	err = mevshare.SaveToFile(resp, fmt.Sprintf("data/history_%s_%s.json", blockStart.String(), blockEnd.String()))
 	if err != nil {
 		t.Fatalf("SaveToFile failed: %v", err)
 	}

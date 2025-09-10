@@ -3,3 +3,4 @@ trace/traceResult.json
 .env
 liquidation/*/
 mevshare/*/
+query/*/
