@@ -262,7 +262,8 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 			continue
 		}
 
-		// Check each transaction that has the first signature
+		// Collect all potential starting transaction indices
+		var startIndices []int
 		for txHashStr := range txMap {
 			txHash := common.HexToHash(txHashStr)
 
@@ -275,13 +276,35 @@ func SearchBundle(ctx context.Context, client *ethclient.Client, config BundleSe
 				}
 			}
 
-			if txIndex == -1 {
-				continue
+			if txIndex != -1 {
+				startIndices = append(startIndices, txIndex)
+			}
+		}
+
+		// Process potential bundles concurrently
+		if len(startIndices) > 0 {
+			var wg sync.WaitGroup
+			bundleChan := make(chan []*types.Transaction, len(startIndices))
+
+			for _, startIndex := range startIndices {
+				wg.Add(1)
+				go func(idx int) {
+					defer wg.Done()
+					bundleTxs := findBundleInBlock(ctx, client, block, idx, config.EventSignatures, config.Addresses)
+					if len(bundleTxs) > 0 {
+						bundleChan <- bundleTxs
+					}
+				}(startIndex)
 			}
 
-			// Check if we can find a bundle starting from this transaction
-			bundleTxs := findBundleInBlock(ctx, client, block, txIndex, config.EventSignatures, config.Addresses)
-			if len(bundleTxs) > 0 {
+			// Close channel when all goroutines are done
+			go func() {
+				wg.Wait()
+				close(bundleChan)
+			}()
+
+			// Collect results
+			for bundleTxs := range bundleChan {
 				mu.Lock()
 				bundles = append(bundles, bundleTxs)
 				mu.Unlock()
